@@ -1,0 +1,602 @@
+
+public abstract class Table {
+
+    /**
+     * 关键字
+     */
+    private Set<String> keywords;
+    /**
+     * 表名称
+     */
+    private String tableName;
+    /**
+     * 表单描述
+     */
+    private String tableDesc;
+    /**
+     * 表字段
+     */
+    private List<SqlModel> models;
+    /**
+     * 表拓展字段
+     */
+    private List<SqlModel> extraModel;
+    /**
+     * 当前表的主键
+     */
+    private SqlModel primaryKey;
+    /**
+     * 是否已经合并数据
+     */
+    private Boolean isMerge;
+
+    private String engine;
+    private String character;
+
+    public Table(List<SqlModel> models, String tableName) {
+        this(models, tableName, "");
+    }
+
+    public  Table(List<SqlModel> models, String tableName,String tableDesc) {
+        Objects.requireNonNull(models, "models cannot be null");
+        Objects.requireNonNull(tableName, "tableName cannot be null");
+        //默认引擎
+        this.engine = "InnoDB ";
+        //默认字符集
+        this.character = "DEFAULT CHARSET=utf8;";
+        this.isMerge = false;
+        this.models = models;
+        this.tableName = tableName;
+        //设置主键
+        for (SqlModel model : models) {
+            if (model.isPrimaryKey()) {
+                setPrimaryKey(model);
+                return;
+            }
+        }
+    }
+
+    public String getTableName() {
+        return tableName;
+    }
+
+    public void setTableName(String tableName) {
+        this.tableName = tableName;
+    }
+
+    /**
+     * 获取当前表的模型 如果没有合并过 先合并在返回
+     *
+     * @return
+     */
+    public List<SqlModel> getModels() {
+        if (isMerge) {
+            mergeModel();
+        }
+        return models;
+    }
+
+    /**
+     * 合并表单字段以及逻辑
+     */
+    public void mergeModel() {
+        models.addAll(extraModel);
+        isMerge = true;
+    }
+
+    public String getTableDesc() {
+        return tableDesc;
+    }
+
+    public void setTableDesc(String tableDesc) {
+        this.tableDesc = tableDesc;
+    }
+
+    public void setModels(List<SqlModel> models) {
+        isMerge = false;
+        this.models = models;
+    }
+
+    public Set<String> getKeywords() {
+        return keywords;
+    }
+
+    public void setKeywords(Set<String> keywords) {
+        this.keywords = keywords;
+    }
+
+    public SqlModel getPrimaryKey() {
+        return primaryKey;
+    }
+
+    public List<SqlModel> getExtraModel() {
+        return extraModel;
+    }
+
+    public void setExtraModel(List<SqlModel> extraModel) {
+        isMerge = false;
+        this.extraModel = extraModel;
+    }
+
+    public Boolean getMerge() {
+        return isMerge;
+    }
+
+    public void setMerge(Boolean merge) {
+        isMerge = merge;
+    }
+
+    public String getEngine() {
+        return engine;
+    }
+
+    public void setEngine(String engine) {
+        this.engine = engine;
+    }
+
+    public String getCharacter() {
+        return character;
+    }
+
+    public void setCharacter(String character) {
+        this.character = character;
+    }
+
+    public void setPrimaryKey(SqlModel primaryKey) {
+        this.primaryKey = primaryKey;
+    }
+
+
+    /**
+     * 获取创建表语句
+     *
+     * @return
+     */
+    public abstract String getCreateTableSql();
+    /**
+     * 创建备注语句
+     *
+     * @return
+     */
+    public abstract String getCommentTableSql();
+
+    public abstract String updateOrInsertTableCommentSql(String tableName, String tableDesc);
+
+    /**
+     * 获取字段的备注sql
+     * @return
+     */
+    public abstract String getCommentColumnSql();
+
+    /**
+     * 更新字段sql
+     * @param sqlModel
+     * @return
+     */
+    public abstract String getUpdateColumnDocSql(SqlModel sqlModel);
+
+}
+
+
+public class MysqlTable extends Table {
+
+    private final String format = " `%s` ";
+    private final String lineFeed = ",\n";
+    private final String timestampDefault=" DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP ";
+
+    private final String primaryKeyStr = "  PRIMARY KEY (`%s`)";
+
+    /**
+     * mysqlColumnMap {@link MysqlColumn}
+     */
+    Map<Byte, MysqlColumn> mysqlColumnMap = MysqlColumn.toMap();
+
+
+    public MysqlTable(List<SqlModel> models, String tableName, String tableDoc) {
+        super(models, tableName, tableDoc);
+    }
+
+    public MysqlTable(List<SqlModel> models, String tableName) {
+        super(models, tableName);
+    }
+
+    /**
+     * 获取创建的sql语句
+     *
+     * @return
+     */
+    @Override
+    public String getCreateTableSql() {
+        if (this.getModels().isEmpty()) {
+            throw new RuntimeException("models isEmpty");
+        }
+
+        StringBuilder sql = new StringBuilder();
+        //前缀
+        sql.append("CREATE TABLE " + "`")
+                .append(this.getTableName())
+                .append("`").append(" ( \n");
+
+        //行数据拼接
+        for (SqlModel model : this.getModels()) {
+            sql.append(builderLine(model));
+        }
+        //如果有主键拼接主键字符串，没有的话删除最后一个逗号
+        sql = getPrimaryKey() != null ? sql.append(String.format(primaryKeyStr, getPrimaryKey().getColumn())) : sql.delete(sql.length() - lineFeed.length(), sql.length() - 1);
+        //后缀
+        sql.append("\n").append(builderEnding());
+        return sql.toString();
+    }
+
+
+    /**
+     * 构造行字段
+     *
+     * @param model {@link SqlModel}
+     */
+    public StringBuilder builderLine(SqlModel model) {
+        StringBuilder sql = new StringBuilder();
+        sql.append(String.format(format, model.getColumn()));
+        //获取当前模型的实际类型
+        MysqlColumn mysqlColumn = mysqlColumnMap.get(model.getType());
+
+        sql.append(mysqlColumn.isHasSuffix() ?
+                String.format(mysqlColumn.getSuffix(), model.getLength()) :
+                mysqlColumn.getSuffix());
+
+        sql.append(model.isNull() ? ColumnStatus.ISNULL.getDescription() : ColumnStatus.NOTNULL.getDescription());
+        //设置主键
+        sql = this.getPrimaryKey() == model && model.isAuto() ? sql.append(" AUTO_INCREMENT") : sql;
+        //设置时间默认值
+        sql = mysqlColumn == MysqlColumn.TIMESTAMP ? sql.append(timestampDefault) : sql;
+        return sql.append(lineFeed);
+    }
+
+    /**
+     * 拼接comment
+     *
+     * @return
+     */
+    public String builderCommentLine(SqlModel model) {
+        if (StringUtils.isEmpty(model.getComment())) {
+            return "";
+        }
+        MysqlColumn mysqlColumn = mysqlColumnMap.get(model.getType());
+        //是否有后缀 (?) :有的话需要替换长度 部分字段不需要设置长度
+        String suffix = mysqlColumn.isHasSuffix() ? String.format(mysqlColumn.getSuffix(), model.getLength()) : mysqlColumn.getSuffix();
+        //设置TIMESTAMP的默认值 如果是这个类型需要追加
+        suffix = mysqlColumn == MysqlColumn.TIMESTAMP ? suffix + timestampDefault : suffix;
+        return "alter table " + this.getTableName() + " modify  " + String.format(format, model.getColumn()) + " " + suffix + " comment '" + model.getComment() + "';";
+    }
+
+
+    /**
+     * 更新column字段
+     * @param model
+     * @return
+     */
+    @Override
+    public String getUpdateColumnDocSql(SqlModel model) {
+        return builderCommentLine(model);
+    }
+
+
+    @Override
+    public String updateOrInsertTableCommentSql(String tableName,String tableDesc){
+        return  "alter table " + tableName + " comment '" + tableDesc + "';";
+    }
+
+    /**
+     * 构造结束语句 ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8;
+     */
+    public StringBuilder builderEnding() {
+        StringBuilder sql = new StringBuilder();
+        sql.append(") ENGINE=").append(this.getEngine()).append(this.getCharacter());
+        return sql;
+    }
+
+    /**
+     * 行备注的构造
+     * @return
+     */
+    @Override
+    public String getCommentColumnSql() {
+        StringBuilder sql = new StringBuilder();
+        for (SqlModel model : this.getModels()) {
+            sql.append(builderCommentLine(model)).append("\n");
+        }
+        return sql.toString();
+    }
+
+
+    /**
+     * 表备注的构造
+     * @return
+     */
+    @Override
+    public String getCommentTableSql() {
+       return updateOrInsertTableCommentSql(this.getTableName(),this.getTableDesc());
+    }
+
+}
+
+public class CreateUtils {
+
+    public static Table createTable(DbType dbType, List<SqlModel> sqlModels, String tableName, String doc) {
+        return switch (dbType) {
+            case MYSQL -> new MysqlTable(sqlModels, tableName,doc);
+            case POSTGRESQL -> new PostgreSqlTable(sqlModels, tableName,doc);
+            default -> throw new RuntimeException("构造失败");
+        };
+    }
+
+
+    public static Table createTable(DbType dbType, List<SqlModel> sqlModels, String tableName) {
+        return switch (dbType) {
+            case MYSQL -> new MysqlTable(sqlModels, tableName);
+            case POSTGRESQL -> new PostgreSqlTable(sqlModels, tableName);
+            default -> throw new RuntimeException("构造失败");
+        };
+    }
+
+
+    public static SqlProvider builderSqlProvider(ModeType modeType) {
+        return switch (modeType) {
+            case EXCEL, TABLE -> new TableOrFileProvider();
+            case BEAN -> new ModelSqlProvider();
+            default -> throw new RuntimeException("构造失败");
+        };
+    }
+}
+public class SqlModel {
+
+    /**
+     * 字段
+     */
+    private String column;
+
+    /**
+     * 描述
+     */
+    private String comment;
+    /**
+     * 字段类型
+     */
+    private Byte type;
+
+    /**
+     * 字段长度
+     */
+    private Integer length;
+
+    private boolean isNull;
+
+    /**
+     * 是否是主键
+     */
+    private boolean isPrimaryKey;
+    /**
+     * 是否需要子增
+     */
+    private boolean isAuto;
+
+
+    public SqlModel() {
+    }
+
+    public SqlModel(String column, String comment, Byte type, Integer length, boolean isNull, boolean isPrimaryKey, boolean isAuto) {
+        this.column = column;
+        this.comment = comment;
+        this.type = type;
+        this.length = length;
+        this.isNull = isNull;
+        this.isPrimaryKey = isPrimaryKey;
+        this.isAuto = isAuto;
+    }
+
+    public String getColumn() {
+        return column;
+    }
+
+    public void setColumn(String column) {
+        this.column = column;
+    }
+
+    public String getComment() {
+        return comment;
+    }
+
+    public void setComment(String comment) {
+        this.comment = comment;
+    }
+
+    public Byte getType() {
+        return type;
+    }
+
+    public void setType(Byte type) {
+        this.type = type;
+    }
+
+    public Integer getLength() {
+        return length;
+    }
+
+    public void setLength(Integer length) {
+        this.length = length;
+    }
+
+    public boolean isNull() {
+        return isNull;
+    }
+
+    public void setNull(boolean aNull) {
+        isNull = aNull;
+    }
+
+    public boolean isPrimaryKey() {
+        return isPrimaryKey;
+    }
+
+    /**
+     * 如果设置了主键必须设置主键不是null
+     *
+     * @param primaryKey 是否是主键
+     */
+    public void setPrimaryKey(boolean primaryKey) {
+        isPrimaryKey = primaryKey;
+        this.isNull = false;
+    }
+
+    public boolean isAuto() {
+        return isAuto;
+    }
+
+    /**
+     * 必须是主键才可以设置自动递增
+     *
+     * @param auto
+     */
+    public void setAuto(boolean auto) {
+        isAuto = isPrimaryKey && auto;
+    }
+}
+public class SqlManager extends SqlConstructor {
+
+    /**
+     * 数据库连接对象
+     */
+    private DataSource dataSource;
+
+    public SqlManager(Table table, ModeType modeType) {
+        super(table, modeType);
+    }
+
+    public SqlManager(Table table, ModeType modeType, DataSource dataSource) {
+        super(table, modeType);
+        this.dataSource = dataSource;
+    }
+
+    public SqlManager(Table table) {
+        super(table);
+    }
+
+
+    public SqlManager(Table table, DataSource dataSource) {
+        super(table);
+        this.dataSource = dataSource;
+    }
+
+
+    public void execute(String sql) {
+        if (dataSource == null) {
+            throw new RuntimeException("dataSource is null");
+        }
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute(sql);
+            connection.commit();
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage());
+        }
+    }
+
+    /**
+     * 获取执行语句并执行建表语句
+     */
+    public void executeCreateTableSql() {
+        execute(getCreateTableAndCommentSql());
+    }
+
+}
+public class SqlConstructor {
+
+    /**
+     * 换行符号
+     */
+    final String lineFeed = " \n";
+
+
+    /**
+     * 表结构
+     */
+    private Table table;
+    /**
+     * sql构造器
+     */
+    private SqlProvider sqlProvider;
+
+
+    /**
+     * 获取创建表语句
+     *
+     * @return
+     */
+    public String getCreateTableSql() {
+        return this.table.getCreateTableSql();
+    }
+
+    /**
+     * 创建备注语句
+     *
+     * @return
+     */
+    public String getCommentSql() {
+        return this.table.getCommentColumnSql() + this.table.getCommentTableSql();
+    }
+
+    /**
+     * 更新单个字段
+     *
+     * @return
+     */
+    public String getUpdateColumnDoc(SqlModel sqlModel) {
+        return this.table.getUpdateColumnDocSql(sqlModel);
+    }
+
+    /**
+     * 更新表备注
+     *
+     * @return
+     */
+    public String getUpdateTableDoc(String tableName, String tableDoc) {
+        return this.table.updateOrInsertTableCommentSql(tableName, tableDoc);
+    }
+
+    /**
+     * 获取建表语句以及备注语句
+     *
+     * @return
+     */
+    public String getCreateTableAndCommentSql() {
+        return getCreateTableSql() + lineFeed + getCommentSql();
+    }
+
+    public SqlConstructor(Table table, ModeType modeType) {
+        this.table = table;
+        this.sqlProvider = CreateUtils.builderSqlProvider(modeType);
+    }
+
+
+    public SqlConstructor(Table table) {
+        this.table = table;
+        this.sqlProvider = CreateUtils.builderSqlProvider(ModeType.BEAN);
+    }
+
+    public SqlProvider getSqlProvider() {
+        return sqlProvider;
+    }
+
+    public void setSqlProvider(SqlProvider sqlProvider) {
+        this.sqlProvider = sqlProvider;
+    }
+
+
+    public Table getTable() {
+        return table;
+    }
+
+    public void setTable(Table table) {
+        this.table = table;
+    }
+
+}
