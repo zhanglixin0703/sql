@@ -2,10 +2,7 @@ package com.lixin.etl.db.model;
 
 import com.lixin.etl.db.keyword.PostGreSqlKeyword;
 
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Description:
@@ -31,19 +28,22 @@ public enum MysqlColumn {
     private final byte value;
     private final boolean hasSuffix;
 
+    public static final Map<Byte,MysqlColumn>  enumMap=toMap();
+
     private MysqlColumn(String suffix, byte value, boolean hasSuffix) {
         this.suffix = suffix;
         this.value = value;
         this.hasSuffix = hasSuffix;
     }
 
-    public static Map<Byte,MysqlColumn> toMap() {
+    private static Map<Byte,MysqlColumn> toMap() {
         Map<Byte,MysqlColumn> statusMap = new LinkedHashMap<Byte,MysqlColumn>();
         for (MysqlColumn tmp : MysqlColumn.values()) {
             statusMap.put(tmp.value, tmp);
         }
         return statusMap;
     }
+
     public String getSuffix() {
         return suffix;
     }

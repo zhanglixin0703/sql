@@ -3,10 +3,11 @@ package com.lixin.etl.db.table;
 
 import com.lixin.etl.db.model.ColumnStatus;
 import com.lixin.etl.db.model.MysqlColumn;
-import org.springframework.util.StringUtils;
+import io.micrometer.common.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Description:
@@ -26,14 +27,13 @@ public class MysqlTable extends Table {
 
     private final String format = " `%s` ";
     private final String lineFeed = ",\n";
-    private final String timestampDefault=" DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP ";
+    private final String timestampDefault = " DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP ";
 
     private final String primaryKeyStr = "  PRIMARY KEY (`%s`)";
 
     /**
      * mysqlColumnMap {@link MysqlColumn}
      */
-    Map<Byte, MysqlColumn> mysqlColumnMap = MysqlColumn.toMap();
 
 
     public MysqlTable(List<SqlModel> models, String tableName, String tableDoc) {
@@ -57,16 +57,19 @@ public class MysqlTable extends Table {
 
         StringBuilder sql = new StringBuilder();
         //前缀
-        sql.append("CREATE TABLE " + "`")
-                .append(this.getTableName())
-                .append("`").append(" ( \n");
+        sql.append(String.format("CREATE TABLE `%s` (\n", this.getTableName()));
 
+        SqlModel primaryKey = this.getPrimaryKey();
         //行数据拼接
         for (SqlModel model : this.getModels()) {
-            sql.append(builderLine(model));
+            sql.append(buildColumnDefinition(model));
         }
         //如果有主键拼接主键字符串，没有的话删除最后一个逗号
-        sql = getPrimaryKey() != null ? sql.append(String.format(primaryKeyStr, getPrimaryKey().getColumn())) : sql.delete(sql.length() - lineFeed.length(), sql.length() - 1);
+        if (primaryKey != null) {
+            sql.append(String.format(primaryKeyStr, getPrimaryKey().getColumn()));
+        } else {
+            sql.delete(sql.length() - lineFeed.length(), sql.length() - 1);
+        }
         //后缀
         sql.append("\n").append(builderEnding());
         return sql.toString();
@@ -78,21 +81,23 @@ public class MysqlTable extends Table {
      *
      * @param model {@link SqlModel}
      */
-    public StringBuilder builderLine(SqlModel model) {
+    private StringBuilder buildColumnDefinition(SqlModel model) {
         StringBuilder sql = new StringBuilder();
         sql.append(String.format(format, model.getColumn()));
         //获取当前模型的实际类型
-        MysqlColumn mysqlColumn = mysqlColumnMap.get(model.getType());
+        MysqlColumn mysqlColumn = model.getType();
 
-        sql.append(mysqlColumn.isHasSuffix() ?
-                String.format(mysqlColumn.getSuffix(), model.getLength()) :
-                mysqlColumn.getSuffix());
+        sql.append(mysqlColumn.isHasSuffix() ? String.format(mysqlColumn.getSuffix(), model.getLength()) : mysqlColumn.getSuffix());
 
         sql.append(model.isNull() ? ColumnStatus.ISNULL.getDescription() : ColumnStatus.NOTNULL.getDescription());
         //设置主键
-        sql = this.getPrimaryKey() == model && model.isAuto() ? sql.append(" AUTO_INCREMENT") : sql;
+        if (model.getPrimaryKey().isPrimaryKey()) {
+            sql.append(" AUTO_INCREMENT");
+        }
         //设置时间默认值
-        sql = mysqlColumn == MysqlColumn.TIMESTAMP ? sql.append(timestampDefault) : sql;
+        if (model.getType().getValue()==MysqlColumn.TIMESTAMP.getValue()) {
+            sql.append(timestampDefault);
+        }
         return sql.append(lineFeed);
     }
 
@@ -102,10 +107,10 @@ public class MysqlTable extends Table {
      * @return
      */
     public String builderCommentLine(SqlModel model) {
-        if (StringUtils.isEmpty(model.getComment())) {
+        if (StringUtils.isBlank(model.getComment())) {
             return "";
         }
-        MysqlColumn mysqlColumn = mysqlColumnMap.get(model.getType());
+        MysqlColumn mysqlColumn = MysqlColumn.enumMap.get(model.getType().getValue());
         //是否有后缀 (?) :有的话需要替换长度 部分字段不需要设置长度
         String suffix = mysqlColumn.isHasSuffix() ? String.format(mysqlColumn.getSuffix(), model.getLength()) : mysqlColumn.getSuffix();
         //设置TIMESTAMP的默认值 如果是这个类型需要追加
@@ -116,6 +121,7 @@ public class MysqlTable extends Table {
 
     /**
      * 更新column字段
+     *
      * @param model
      * @return
      */
@@ -126,8 +132,8 @@ public class MysqlTable extends Table {
 
 
     @Override
-    public String updateOrInsertTableCommentSql(String tableName,String tableDesc){
-        return  "alter table " + tableName + " comment '" + tableDesc + "';";
+    public String updateOrInsertTableCommentSql(String tableName, String tableDesc) {
+        return "alter table " + tableName + " comment '" + tableDesc + "';";
     }
 
     /**
@@ -141,6 +147,7 @@ public class MysqlTable extends Table {
 
     /**
      * 行备注的构造
+     *
      * @return
      */
     @Override
@@ -155,11 +162,12 @@ public class MysqlTable extends Table {
 
     /**
      * 表备注的构造
+     *
      * @return
      */
     @Override
     public String getCommentTableSql() {
-       return updateOrInsertTableCommentSql(this.getTableName(),this.getTableDesc());
+        return updateOrInsertTableCommentSql(this.getTableName(), this.getTableDesc());
     }
 
 }

@@ -1,5 +1,8 @@
 package com.lixin.etl.db.model;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Description:
  * Copyright:   Copyright (c)2023
@@ -15,9 +18,7 @@ package com.lixin.etl.db.model;
  * 2023-03-16     张李鑫                     1.0         1.0 Version
  */
 public enum ModeType {
-    EXCEL("excel",(byte)0),
-    TABLE("table",(byte)1),
-    BEAN("table",(byte)2);
+    EXCEL("excel", (byte) 0), TABLE("table", (byte) 1), BEAN("table", (byte) 2);
 
     private final String description;
     private final byte value;
@@ -26,6 +27,15 @@ public enum ModeType {
         this.description = description;
         this.value = value;
     }
+
+    public static Map<Byte, ModeType> toMap() {
+        Map<Byte, ModeType> statusMap = new LinkedHashMap<Byte, ModeType>();
+        for (ModeType tmp : ModeType.values()) {
+            statusMap.put(tmp.value, tmp);
+        }
+        return statusMap;
+    }
+
     public String getDescription() {
         return description;
     }

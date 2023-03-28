@@ -56,7 +56,7 @@ public abstract class Table {
         this(models, tableName, "");
     }
 
-    public  Table(List<SqlModel> models, String tableName,String tableDesc) {
+    public Table(List<SqlModel> models, String tableName, String tableDesc) {
         Objects.requireNonNull(models, "models cannot be null");
         Objects.requireNonNull(tableName, "tableName cannot be null");
         //默认引擎
@@ -68,7 +68,7 @@ public abstract class Table {
         this.tableName = tableName;
         //设置主键
         for (SqlModel model : models) {
-            if (model.isPrimaryKey()) {
+            if (model.getPrimaryKey().isPrimaryKey()) {
                 setPrimaryKey(model);
                 return;
             }
@@ -172,6 +172,7 @@ public abstract class Table {
      * @return
      */
     public abstract String getCreateTableSql();
+
     /**
      * 创建备注语句
      *
@@ -183,12 +184,14 @@ public abstract class Table {
 
     /**
      * 获取字段的备注sql
+     *
      * @return
      */
     public abstract String getCommentColumnSql();
 
     /**
      * 更新字段sql
+     *
      * @param sqlModel
      * @return
      */

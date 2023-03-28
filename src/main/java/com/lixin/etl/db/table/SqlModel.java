@@ -1,5 +1,10 @@
 package com.lixin.etl.db.table;
 
+import com.lixin.etl.db.model.MysqlColumn;
+import com.lixin.etl.db.model.PrimaryKey;
+
+import java.util.List;
+
 /**
  * Description: 单列字段的描述类
  * Copyright:   Copyright (c)2023
@@ -28,23 +33,19 @@ public class SqlModel {
     /**
      * 字段类型
      */
-    private Byte type;
+    private MysqlColumn type;
 
     /**
      * 字段长度
      */
-    private Integer length;
+    private int length;
 
     private boolean isNull;
 
     /**
      * 是否是主键
      */
-    private boolean isPrimaryKey;
-    /**
-     * 是否需要子增
-     */
-    private boolean isAuto;
+    private PrimaryKey primaryKey;
 
 
     public SqlModel() {
@@ -53,11 +54,11 @@ public class SqlModel {
     public SqlModel(String column, String comment, Byte type, Integer length, boolean isNull, boolean isPrimaryKey, boolean isAuto) {
         this.column = column;
         this.comment = comment;
-        this.type = type;
+        setType(type);
         this.length = length;
         this.isNull = isNull;
-        this.isPrimaryKey = isPrimaryKey;
-        this.isAuto = isAuto;
+        setPrimaryKey(isPrimaryKey, isAuto);
+
     }
 
     public String getColumn() {
@@ -76,12 +77,12 @@ public class SqlModel {
         this.comment = comment;
     }
 
-    public Byte getType() {
+    public MysqlColumn getType() {
         return type;
     }
 
     public void setType(Byte type) {
-        this.type = type;
+        this.type = MysqlColumn.enumMap.get(type);
     }
 
     public Integer getLength() {
@@ -100,8 +101,8 @@ public class SqlModel {
         isNull = aNull;
     }
 
-    public boolean isPrimaryKey() {
-        return isPrimaryKey;
+    public PrimaryKey getPrimaryKey() {
+        return primaryKey;
     }
 
     /**
@@ -109,21 +110,14 @@ public class SqlModel {
      *
      * @param primaryKey 是否是主键
      */
-    public void setPrimaryKey(boolean primaryKey) {
-        isPrimaryKey = primaryKey;
-        this.isNull = false;
-    }
-
-    public boolean isAuto() {
-        return isAuto;
-    }
-
-    /**
-     * 必须是主键才可以设置自动递增
-     *
-     * @param auto
-     */
-    public void setAuto(boolean auto) {
-        isAuto = isPrimaryKey && auto;
+    public void setPrimaryKey(boolean primaryKey, boolean isAuto) {
+        List<PrimaryKey> primaryKeys = PrimaryKey.toList();
+        for (PrimaryKey key : primaryKeys) {
+            if (key.isAutoIncrement() == isAuto && key.isPrimaryKey() == primaryKey) {
+                this.primaryKey = key;
+                return;
+            }
+        }
+        throw new RuntimeException("params is error");
     }
 }
